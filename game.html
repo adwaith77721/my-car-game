@@ -1,219 +1,394 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Pixel Car Racing - Coconut Edition</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Car Racing</title>
 <style>
-  body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', monospace; }
-  #gameContainer { position: relative; width: 400px; margin: 20px auto; text-align: center; }
-  #gameCanvas { display: block; background: #388E3C; border: 4px solid #fff; box-shadow: 0 0 15px rgba(255,255,255,0.2); margin: 0 auto; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #101820;
+  color: white;
+  font-family: monospace;
+  text-align: center;
+}
+h2 { color: #00ffcc; }
+#gameContainer { width: 100%; padding: 10px; }
+canvas {
+  width: min(400px, 96vw);
+  height: auto;
+  border: 4px solid white;
+  background: #388e3c;
+  image-rendering: pixelated;
+  box-shadow: 0 0 20px #00ffcc55;
+}
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin: 15px;
+}
+button {
+  background: #00c853;
+  border: 2px solid white;
+  color: white;
+  padding: 15px 30px;
+  font-size: 22px;
+  font-weight: bold;
+  border-radius: 10px;
+  cursor: pointer;
+  touch-action: none;
+}
+button:active { background: #ff9800; }
+#restart { background: #e53935; font-size: 16px; }
 </style>
 </head>
 <body>
+
+<h2>🏎️ PIXEL CAR RACING 🌴</h2>
 <div id="gameContainer">
   <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+  <div class="controls">
+    <button id="left">⬅️</button>
+    <button id="right">➡️</button>
+  </div>
+  <button id="restart">🔄 RESTART GAME</button>
+  <p>Keyboard: ← → or A / D</p>
 </div>
+
 <script>
-  const canvas = document.getElementById("gameCanvas");
-  const ctx = canvas.getContext("2d");
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-  let carX, carY, carWidth, carHeight, carSpeed;
-  let obstacleX, obstacleY, obstacleWidth, obstacleHeight, obstacleSpeed, obstacleColor;
-  let score, highScore, gameOver;
-  let rightPressed, leftPressed;
-  let trees = [];
+const W = 400, H = 600;
+const roadLeft = 50, roadRight = 350;
 
-  function initGame() {
-    carX = 175;
-    carY = 480;
-    carWidth = 50;
-    carHeight = 90;
-    carSpeed = 7;
-    
-    spawnObstacle();
-    initTrees();
-    
-    score = 0;
-    highScore = localStorage.getItem("highScore") || 0;
-    gameOver = false;
-    rightPressed = false;
-    leftPressed = false;
+let player = { x: 175, y: 475, w: 48, h: 90 };
+let enemies = [];
+let trees = [];
+let score = 0;
+let highScore = Number(localStorage.getItem("pixelHighScore")) || 0;
+let speed = 4;
+let gameOver = false;
+let leftPressed = false;
+let rightPressed = false;
+let lastTime = 0;
+let roadLine = 0;
+
+// Pixel art car sprites
+const playerSprite = [
+"....RRRR....",
+"...RWWWWR...",
+"..RRRRRRRR..",
+"..RCCCCCCR..",
+"..RCCCCCCR..",
+"..RRRRRRRR..",
+"..RRRRRRRR..",
+"..RCCCCCCR..",
+"..RCCCCCCR..",
+"..RRRRRRRR..",
+"..RRRRRRRR..",
+".BBRRRRRRBB.",
+".BBRRRRRRBB.",
+"..RRRRRRRR..",
+"..RRRRRRRR..",
+"..RRRRRRRR..",
+"...RR..RR...",
+"...BB..BB..."
+];
+
+const enemySprite = [
+"....BBBB....",
+"...BWWWWB...",
+"..BBBBBBBB..",
+"..BCCCCCCB..",
+"..BCCCCCCB..",
+"..BBBBBBBB..",
+"..BBBBBBBB..",
+"..BCCCCCCB..",
+"..BCCCCCCB..",
+"..BBBBBBBB..",
+"..BBBBBBBB..",
+".BBBRRRRBBB.",
+".BBBRRRRBBB.",
+"..BBBBBBBB..",
+"..BBBBBBBB..",
+"..BBBBBBBB..",
+"...BB..BB...",
+"...BB..BB..."
+];
+
+function drawPixelCar(sprite, x, y, scale, colors) {
+  const pixel = 4;
+  sprite.forEach((row, ry) => {
+    [...row].forEach((char, rx) => {
+      if (char === ".") return;
+      ctx.fillStyle = colors[char] || "#fff";
+      ctx.fillRect(
+        x + rx * pixel * scale,
+        y + ry * pixel * scale,
+        pixel * scale,
+        pixel * scale
+      );
+    });
+  });
+}
+
+const playerColors = {
+  R: "#e53935",
+  W: "#ffffff",
+  C: "#80d8ff",
+  B: "#151515"
+};
+
+const enemyColors = {
+  B: "#1565c0",
+  W: "#ffffff",
+  C: "#90caf9",
+  R: "#111111"
+};
+
+function createTrees() {
+  trees = [];
+  for (let i = 0; i < 7; i++) {
+    trees.push({ x: 15, y: i * 110 - 100 });
+    trees.push({ x: 365, y: i * 110 - 100 });
+  }
+}
+
+function drawTree(x, y) {
+  ctx.fillStyle = "#795548";
+  ctx.fillRect(x + 8, y + 15, 10, 35);
+
+  ctx.fillStyle = "#2e7d32";
+  ctx.fillRect(x, y, 28, 25);
+  ctx.fillRect(x - 7, y + 8, 42, 12);
+
+  ctx.fillStyle = "#4caf50";
+  ctx.fillRect(x + 5, y - 5, 8, 8);
+
+  ctx.fillStyle = "#5d4037";
+  ctx.fillRect(x + 8, y + 15, 5, 5);
+  ctx.fillRect(x + 17, y + 19, 5, 5);
+}
+
+function drawRoad() {
+  ctx.fillStyle = "#388e3c";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = "#424242";
+  ctx.fillRect(50, 0, 300, H);
+
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(48, 0, 4, H);
+  ctx.fillRect(348, 0, 4, H);
+
+  ctx.fillStyle = "#ffeb3b";
+  for (let y = -40; y < H; y += 80) {
+    ctx.fillRect(198, y + roadLine, 5, 40);
   }
 
-  function initTrees() {
-    trees = [];
-    for (let i = 0; i < 6; i++) {
-      trees.push({
-        x1: 15, 
-        x2: 355, 
-        y: i * 120 - 100
+  roadLine += speed;
+  if (roadLine >= 80) roadLine = 0;
+}
+
+function spawnEnemy() {
+  const lanes = [80, 175, 270];
+  const lane = lanes[Math.floor(Math.random() * lanes.length)];
+
+  enemies.push({
+    x: lane,
+    y: -100,
+    speed: speed + Math.random() * 2,
+    color: Math.random() > 0.5 ? "blue" : "orange"
+  });
+}
+
+function drawEnemies() {
+  enemies.forEach(enemy => {
+    if (enemy.color === "blue") {
+      drawPixelCar(enemySprite, enemy.x, enemy.y, 1, enemyColors);
+    } else {
+      drawPixelCar(enemySprite, enemy.x, enemy.y, 1, {
+        B: "#ef6c00",
+        W: "#ffffff",
+        C: "#ffcc80",
+        R: "#111111"
       });
     }
+  });
+}
+
+function collision(a, b) {
+  return (
+    a.x + 8 < b.x + 40 &&
+    a.x + a.w - 8 > b.x + 8 &&
+    a.y + 10 < b.y + 70 &&
+    a.y + a.h - 10 > b.y + 10
+  );
+}
+
+function drawUI() {
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 19px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("SCORE: " + score, 10, 30);
+  ctx.fillText("BEST: " + highScore, 10, 55);
+}
+
+function endGame() {
+  gameOver = true;
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem("pixelHighScore", highScore);
   }
+}
 
-  function spawnObstacle() {
-    const obstacleTypes = [
-      { w: 50, h: 90, speed: 5, color: '#2196F3' },   
-      { w: 60, h: 120, speed: 3.5, color: '#FF9800' }, 
-      { w: 60, h: 140, speed: 3, color: '#4CAF50' }    
-    ];
-    const randomIndex = Math.floor(Math.random() * obstacleTypes.length);
-    const type = obstacleTypes[randomIndex];
+function drawGameOver() {
+  ctx.fillStyle = "rgba(0,0,0,0.8)";
+  ctx.fillRect(0, 0, W, H);
 
-    obstacleX = Math.floor(Math.random() * (280 - type.w)) + 60; 
-    obstacleY = -150;
-    obstacleWidth = type.w;
-    obstacleHeight = type.h;
-    obstacleSpeed = type.speed;
-    obstacleColor = type.color;
-  }
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ff3333";
+  ctx.font = "bold 42px monospace";
+  ctx.fillText("CRASH!", 200, 230);
 
-  document.addEventListener("keydown", keyDownHandler);
-  document.addEventListener("keyup", keyUpHandler);
+  ctx.fillStyle = "white";
+  ctx.font = "25px monospace";
+  ctx.fillText("GAME OVER", 200, 285);
 
-  function keyDownHandler(e) {
-    if(e.key === "Right" || e.key === "ArrowRight") rightPressed = true;
-    else if(e.key === "Left" || e.key === "ArrowLeft") leftPressed = true;
-  }
+  ctx.font = "20px monospace";
+  ctx.fillText("Score: " + score, 200, 335);
+  ctx.fillText("Press RESTART", 200, 390);
+}
 
-  function keyUpHandler(e) {
-    if(e.key === "Right" || e.key === "ArrowRight") rightPressed = false;
-    else if(e.key === "Left" || e.key === "ArrowLeft") leftPressed = false;
-  }
+function update(delta) {
+  const frame = Math.min(delta / 16.67, 2);
 
-  function drawRoad() {
-    ctx.fillStyle = "#388E3C";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (leftPressed) player.x -= 6 * frame;
+  if (rightPressed) player.x += 6 * frame;
 
-    ctx.fillStyle = "#424242";
-    ctx.fillRect(50, 0, 300, canvas.height);
-    
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(50, 0, 300, canvas.height);
+  player.x = Math.max(55, Math.min(297, player.x));
 
-    ctx.beginPath();
-    ctx.setLineDash([30, 30]);
-    ctx.moveTo(200, 0);
-    ctx.lineTo(200, 600);
-    ctx.strokeStyle = "#FFFF00";
-    ctx.lineWidth = 6;
-    ctx.stroke();
-    // Reset line dash for other drawings
-    ctx.setLineDash([]);
-  }
+  enemies.forEach(enemy => {
+    enemy.y += enemy.speed * frame;
+  });
 
-  function drawCoconutTree(x, y) {
-    ctx.fillStyle = "#795548";
-    ctx.fillRect(x, y, 10, 40);
-    
-    ctx.fillStyle = "#2E7D32";
-    ctx.beginPath();
-    ctx.arc(x + 5, y, 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#3E2723";
-    ctx.beginPath();
-    ctx.arc(x + 3, y + 10, 4, 0, Math.PI * 2);
-    ctx.arc(x + 7, y + 15, 4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function updateAndDrawTrees() {
-    for (let tree of trees) {
-      drawCoconutTree(tree.x1, tree.y);
-      drawCoconutTree(tree.x2, tree.y);
-
-      tree.y += carSpeed; 
-
-      if (tree.y > canvas.height) {
-        tree.y = -100;
-      }
+  enemies = enemies.filter(enemy => {
+    if (enemy.y > H) {
+      score++;
+      speed = Math.min(10, 4 + score * 0.12);
+      return false;
     }
-  }
+    return true;
+  });
 
-  function drawPlayerCar() {
-    ctx.save();
-    ctx.translate(carX, carY);
-    ctx.fillStyle = "#d32f2f";
-    ctx.fillRect(0, 0, carWidth, carHeight);
-    ctx.fillStyle = "#90caf9";
-    ctx.fillRect(5, 20, carWidth - 10, 25);
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(carWidth/2 - 5, 0, 10, carHeight);
-    ctx.restore();
-  }
+  enemies.forEach(enemy => {
+    if (collision(player, enemy)) endGame();
+  });
 
-  function drawObstacle() {
-    ctx.save();
-    ctx.translate(obstacleX, obstacleY);
-    ctx.fillStyle = obstacleColor;
-    ctx.fillRect(0, 0, obstacleWidth, obstacleHeight);
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillRect(5, 10, obstacleWidth - 10, 20);
-    ctx.restore();
-  }
+  trees.forEach(tree => {
+    tree.y += speed * frame;
+    if (tree.y > H) tree.y = -60;
+  });
+}
 
-  function collisionDetection() {
-    if (carX < obstacleX + obstacleWidth &&
-        carX + carWidth > obstacleX &&
-        carY < obstacleY + obstacleHeight &&
-        carY + carHeight > obstacleY) {
-      gameOver = true;
-      if (score > highScore) {
-        highScore = score;
-        localStorage.setItem("highScore", highScore);
-      }
-    }
-  }
+let spawnTimer = 0;
 
-  function draw() {
-    drawRoad();
-    updateAndDrawTrees();
+function draw(delta = 16.67) {
+  drawRoad();
 
-    if(gameOver) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.fillStyle = "#ff3333";
-      ctx.font = "bold 50px 'Courier New', monospace";
-      ctx.textAlign = "center";
-      ctx.fillText("CRASH!", canvas.width/2, 220);
-      
-      ctx.fillStyle = "#fff";
-      ctx.font = "30px 'Courier New', monospace";
-      ctx.fillText("GAME OVER", canvas.width/2, 280);
-      ctx.font = "20px 'Courier New', monospace";
-      ctx.fillText("Refresh to Play Again", canvas.width/2, 340);
-    } else {
-      drawPlayerCar();
-      drawObstacle();
-      
-      collisionDetection();
+  trees.forEach(tree => drawTree(tree.x, tree.y));
 
-      obstacleY += obstacleSpeed;
-      if(obstacleY > canvas.height) {
-        spawnObstacle();
-        score++;
-        obstacleSpeed += 0.1;
-      }
+  if (!gameOver) {
+    update(delta);
 
-      if(rightPressed && carX < 350 - carWidth) carX += carSpeed;
-      if(leftPressed && carX > 50) carX -= carSpeed;
+    spawnTimer += delta;
+    if (spawnTimer > Math.max(650, 1400 - score * 15)) {
+      spawnEnemy();
+      spawnTimer = 0;
     }
 
-    ctx.fillStyle = "#fff";
-    ctx.font = "20px 'Courier New', monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("Score: " + score, 20, 40);
-    ctx.fillText("High Score: " + highScore, 20, 70);
-
-    if(!gameOver) {
-      requestAnimationFrame(draw);
-    }
+    drawPixelCar(playerSprite, player.x, player.y, 1, playerColors);
+    drawEnemies();
+    drawUI();
+  } else {
+    drawEnemies();
+    drawPixelCar(playerSprite, player.x, player.y, 1, playerColors);
+    drawUI();
+    drawGameOver();
   }
+}
 
-  initGame();
-  draw();
+function loop(timestamp) {
+  const delta = lastTime ? timestamp - lastTime : 16.67;
+  lastTime = timestamp;
+
+  if (!gameOver) {
+    draw(delta);
+    requestAnimationFrame(loop);
+  }
+}
+
+function restartGame() {
+  player.x = 175;
+  enemies = [];
+  score = 0;
+  speed = 4;
+  spawnTimer = 0;
+  roadLine = 0;
+  gameOver = false;
+  lastTime = 0;
+  createTrees();
+  requestAnimationFrame(loop);
+}
+
+// Keyboard controls
+document.addEventListener("keydown", e => {
+  if (["ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+    e.preventDefault();
+  }
+  if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a")
+    leftPressed = true;
+  if (e.key === "ArrowRight" || e.key.toLowerCase() === "d")
+    rightPressed = true;
+});
+
+document.addEventListener("keyup", e => {
+  if (e.key === "ArrowLeft" || e.key.toLowerCase() === "a")
+    leftPressed = false;
+  if (e.key === "ArrowRight" || e.key.toLowerCase() === "d")
+    rightPressed = false;
+});
+
+// Mobile buttons
+function setupButton(id, direction) {
+  const btn = document.getElementById(id);
+
+  btn.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (direction === "left") leftPressed = true;
+    else rightPressed = true;
+  });
+
+  ["pointerup", "pointerleave", "pointercancel"].forEach(event => {
+    btn.addEventListener(event, () => {
+      if (direction === "left") leftPressed = false;
+      else rightPressed = false;
+    });
+  });
+}
+
+setupButton("left", "left");
+setupButton("right", "right");
+
+document.getElementById("restart").addEventListener("click", restartGame);
+
+createTrees();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
